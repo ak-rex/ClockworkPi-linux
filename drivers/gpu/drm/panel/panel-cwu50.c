@@ -442,7 +442,7 @@ static int cwu50_probe(struct mipi_dsi_device *dsi)
 		return ret;
 	}
 
-	ctx->panel.prepare_upstream_first = true;
+	ctx->panel.prepare_prev_first = true;
 
 	drm_panel_init(&ctx->panel, dev, &cwu50_drm_funcs, DRM_MODE_CONNECTOR_DSI);
 
