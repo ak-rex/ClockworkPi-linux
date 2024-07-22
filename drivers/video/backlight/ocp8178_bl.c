@@ -128,11 +128,6 @@ static int ocp8178_update_status(struct backlight_device *bl)
 	struct ocp8178_backlight *gbl = bl_get_data(bl);
 	int brightness = bl->props.brightness, i;
 
-	if (bl->props.power != FB_BLANK_UNBLANK ||
-	    bl->props.fb_blank != FB_BLANK_UNBLANK ||
-	    bl->props.state & (BL_CORE_SUSPENDED | BL_CORE_FBBLANK))
-		brightness = 0;
-
 	if(brightness > MAX_BRIGHTNESS_VALUE)
 		brightness = MAX_BRIGHTNESS_VALUE;
 
@@ -162,7 +157,6 @@ static const struct backlight_ops ocp8178_backlight_ops = {
 	.options	= BL_CORE_SUSPENDRESUME,
 	.update_status	= ocp8178_update_status,
 	.get_brightness = ocp8178_get_brightness,
-	.check_fb	= ocp8178_check_fb,
 };
 
 static int ocp8178_probe_dt(struct platform_device *pdev,
