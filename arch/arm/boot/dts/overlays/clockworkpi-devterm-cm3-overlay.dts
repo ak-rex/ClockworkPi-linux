@@ -1,0 +1,410 @@
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+
+/* uConsole All In One */
+
+/ {
+	compatible = "brcm,bcm2835";
+
+	fragment@80 {
+		target-path = "/chosen";
+		__overlay__ {
+			/* The bluetooth module need uart0/serial0, so must ensure console doesn't take up the serial port.
+			 * Somehow newer kernel uses serial as the default console, which must be avoided.
+			   Set console=tty1 ensures everything go to the DSI screen(or maybe HDMI). */
+			bootargs = "snd_bcm2835.enable_headphones=1 console=tty1";
+			/* 8250 auxiliary UART instead of pl011, which is used by Bluetooth */
+			stdout-path = "serial1:115200n8";
+		};
+	};
+
+	fragment@90 {
+        target-path = "/";
+		__overlay__ {
+			wifi_pwrseq: wifi-pwrseq {
+				compatible = "mmc-pwrseq-simple";
+				pinctrl-names = "default";
+				pinctrl-0 = <&wifi_rst_pin>;
+				reset-gpios = <&gpio 3 1>; /* GPIO3, GPIO_ACTIVE_LOW */
+				post-power-on-delay-ms = <200>;
+			};
+
+			audio_amplifier: audio-amplifier {
+				compatible = "simple-amplifier-switch";
+				sw-gpios = <&gpio 10 1>; /* GPIO10, GPIO_ACTIVE_LOW */
+				outputs-gpios = <&gpio 11 0>; /* GPIO11, GPIO_ACTIVE_HIGH */
+				// vdd-supply = <&uc_reg_5v0>;
+			};
+
+			ocp8178_backlight: backlight@0 {
+				compatible = "ocp8178-backlight";
+				backlight-control-gpios = <&gpio 9 0>; /* GPIO9 ACTIVE HIGH */
+				default-brightness = <5>;
+				// vdd-supply = <&uc_reg_5v0>;
+			};
+
+			battery: battery@0 {
+				compatible = "simple-battery";
+				constant-charge-current-max-microamp = <2100000>;
+				voltage-min-design-microvolt = <3300000>;
+				voltage-max-design-microvolt = <4200000>;
+			};
+
+			/* TPS61178, the supply for 5V bus, including USB, backlight
+			 */
+			// uc_reg_5v0: uc-reg-5v0 {
+			// 	compatible = "fixed-regulator";
+			// 	regulator-name = "sys-5v0";
+			// 	regulator-boot-on;
+			// 	regulator-always-on; /* cannot be turned off anyway */
+			// 	vin-supply = <&usb_power_supply>;
+			// };
+		};
+	};
+
+	// 91 to 94 are for the on board wireless module
+
+	fragment@91 {
+		/* BT */
+		target = <&uart0>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&uart0_pins &bt_pins>;
+			status = "okay";
+
+			bt: bluetooth {
+				compatible = "brcm,bcm4345c5";
+				interrupt-parent = <&gpio>;
+				interrupts = <6 4>; /* GPIO6, IRQ_TYPE_LEVEL_HIGH */
+				interrupt-names = "host-wake";
+				device-wakeup-gpios = <&gpio 7 0>; /* GPIO7, GPIO_ACTIVE_HIGH */
+				brcm,requires-autobaud-mode;
+				shutdown-gpios = <&gpio 5 0>; /* GPIO5, GPIO_ACTIVE_HIGH */
+				/* max-speed: datasheet shows max speed is 4000000,
+				* however, approperate speed must be set to ensure overall wireless performance.
+				*/
+				max-speed = <1500000>;
+				vbat-supply = <&reg_dldo1>;
+				vddio-supply = <&reg_aldo3>;
+			};
+		};
+	};
+
+	fragment@92 {
+		/* WLAN */
+		/* The general purpose SDHCI interface(SD1) */
+		target = <&mmc>;
+		__overlay__ {
+			pinctrl-0 = <&sdio_gpio22>;
+			pinctrl-names = "default";
+			mmc-pwrseq = <&wifi_pwrseq>;
+			// non-removable; /* don't use this, so the chip can be reliably initialized */
+			bus-width = <4>;
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			vmmc-supply = <&reg_dldo1>;
+			vqmmc-supply = <&reg_aldo3>;
+
+			brcmf: wifi@1 {
+				reg = <1>;
+				compatible = "brcm,bcm43456-fmac", "brcm,bcm4329-fmac";
+				/* The interrupt will not registered on CM3, so skip below */
+				// interrupt-parent = <&gpio>;
+				// interrupts = <4 8>; /* GPIO4, IRQ_TYPE_LEVEL_LOW */
+				// interrupt-names = "host-wake";
+			};
+		};
+	};
+
+	fragment@93 {
+		/* disable the mmc interface without polling */
+		target = <&mmcnr>;
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+
+	fragment@94 {
+		target = <&gpio>;
+		__overlay__ {
+			sdio_gpio22: sdio_gpio22 {
+				brcm,pins = <22 23 24 25 26 27>;
+				brcm,function = <7>; /* ALT3 = SD1 */
+				brcm,pull = <0 0 0 0 0 0>; /* NP(0)*6, oe NP, PU(2)*5 */
+			};
+
+			/* UART0 with CTS/RTS on GPIO14-17 */
+			uart0_pins: uart0_pins {
+				brcm,pins = <14 15 16 17>;
+				brcm,function = <4 4 7 7>;
+				brcm,pull = <0 2 0 2>;
+			};
+
+			/* bt reset and interrupts */
+			bt_pins: bt_pins {
+				brcm,pins = <5 6 7>;
+				brcm,function = <1 0 1>;
+				brcm,pull = <0 2 0>;
+			};
+
+			wifi_rst_pin: wifi_rst_pin {
+				brcm,pins = <3>;
+				brcm,function = <1>;
+				brcm,pull = <2>;
+			};
+		};
+	};
+
+	// 96-99 handles i2c bus selection
+
+	fragment@96 {
+		target-path = "/";
+		__overlay__ {
+			i2c_uconsole_sw: i2c@100 {
+				reg = <100>;
+				compatible = "i2c-gpio";
+				gpios = <&gpio 0 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN) /* sda */
+						 &gpio 1 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN) /* scl */
+					>;
+				i2c-gpio,delay-us = <2>;        /* ~100 kHz */
+				#address-cells = <1>;
+				#size-cells = <0>;
+			};
+		};
+	};
+
+	fragment@97 {
+		target = <&i2c0>;
+		i2c_uconsole_hw0: __dormant__ {
+			status = "okay";
+		};
+	};
+
+	fragment@98 {
+		target = <&i2c0if>;
+		__dormant__ {
+			status = "okay";
+		};
+	};
+
+	fragment@99 {
+		target = <&i2c0mux>;
+		__dormant__ {
+			status = "okay";
+		};
+	};
+
+	// Here's the one for PMU
+	// since we use i2c selection, pmu fragment's target should be editable
+	frag_pmu: fragment@101 {
+		/* PMU */
+		target = <&i2c_uconsole_sw>;
+		__overlay__ {
+			axp22x: pmic@34 {
+				interrupt-controller;
+				#interrupt-cells = <1>;
+				compatible = "x-powers,axp228", "x-powers,axp223", "x-powers,axp221";
+				reg = <0x34>; /* i2c address */
+				interrupt-parent = <&gpio>;
+				interrupts = <2 8>;  /* IRQ_TYPE_LEVEL_LOW */
+				irq-gpios = <&gpio 2 0>;
+
+				/* TODO: figure out the initial output states */
+				regulators {
+
+					x-powers,dcdc-freq = <3000>;
+
+					reg_dcdc1: dcdc1 {
+						regulator-name = "sys-3v3";
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+
+					reg_dcdc3: dcdc3 {
+						regulator-name = "sys-1v8";
+						regulator-always-on;
+						regulator-min-microvolt = <1800000>;
+						regulator-max-microvolt = <1800000>;
+					};
+
+					/* TODO: switch this on demand? */
+					reg_aldo1: aldo1 {
+						regulator-name = "aud-3v3";
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+
+					reg_aldo2: aldo2 {
+						regulator-name = "disp-3v3";
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+
+					/* This pull up is required to make BT stable.
+					* This pull up must set to 3.3v when voltage jumpers are not changed,
+					* or the chip will not show up.
+					* It may originate from CM3 IO refs input voltages.
+					*/
+					reg_aldo3: aldo3 {
+						regulator-name = "vdd-wifi";
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+
+					/* DLDO1 and ELDO1-3 are connected in parallel. */
+					/* So I think they should be left on */
+					reg_dldo1: dldo1 {
+						regulator-name = "vbat-wifi-a";
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+
+					/* DLDO2-DLDO4 are connected in parallel.
+					* They seem not necessary, BUT they are connected to the TPS2553's enable pin!
+					* Disable them will shutdown the USB 5V line.
+					*/
+					reg_dldo2: dldo2 {
+						regulator-name = "vcc-3v3-ext-a";
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+
+					reg_dldo3: dldo3 {
+						regulator-name = "vcc-3v3-ext-b";
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+
+					reg_dldo4: dldo4 {
+						regulator-name = "vcc-3v3-ext-c";
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+
+					reg_eldo1: eldo1 {
+						regulator-name = "vbat-wifi-b";
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+
+					reg_eldo2: eldo2 {
+						regulator-name = "vbat-wifi-c";
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+
+					reg_eldo3: eldo3 {
+						regulator-name = "vbat-wifi-d";
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+					};
+				};
+
+				battery_power_supply: battery-power-supply {
+					compatible = "x-powers,axp221-battery-power-supply";
+					monitored-battery = <&battery>;
+				};
+
+				ac_power_supply: ac_power_supply {
+					compatible = "x-powers,axp221-ac-power-supply";
+				};
+
+				axp_adc: adc {
+					compatible = "x-powers,axp221-adc";
+					#io-channel-cells = <1>;
+				};
+
+				axp_gpio: gpio {
+					compatible = "x-powers,axp221-gpio";
+					gpio-controller;
+					#gpio-cells = <2>;
+					status = "disabled";
+
+					gpio0_out: gpio0-out-pin {
+						pins = "GPIO0";
+						function = "gpio_out";
+					};
+				};
+
+				/* IPSOUT, feed to on-board buck to get 5V output */
+				/* TODO: figure out how to configure it properly */
+				usb_power_supply: usb-power {
+					compatible = "x-powers,axp221-usb-power-supply";
+				};
+			};
+		};
+	};
+
+	__overrides__ {
+		cm4 = <0>, "-91-92-93-94", // disable BT, WiFi on uConsole main board, and other fixes for CM3
+				<&reg_dldo1>, "regulator-always-on!", // disable ldos for wireless module
+				<&reg_eldo1>, "regulator-always-on!",
+				<&reg_eldo2>, "regulator-always-on!",
+				<&reg_eldo3>, "regulator-always-on!";
+		hwi2c = <0>, "-96+97+98+99", // disable SW i2c, enable HW i2c0
+				<&frag_pmu>, "target:0=",<&i2c_uconsole_hw0>; // move PMU from sw i2c(3) to hw i2c0
+	};
+};
+
+&leds {
+	/delete-node/ led-act;
+
+	/* This is the green LED under the power button,
+	 * However this is not usable without a hardware modification(move R117 to R116)
+	 */
+	// act_led: led-act {
+	//	linux,default-trigger = "default-on";
+	// 	gpios = <&axp_gpio 0 1>; /* gpio0 on pmu, low active */
+	// 	// function = "activity";
+	// };
+
+	/* This is the orange charging LED under the power button.
+	 * Requires a patch to the pinctrl-axp209 driver, because
+	 * charge led is not a gpio thus not supported.
+	 */
+	// chg_led: led-chg {
+	// 	linux,default-trigger = "axp20x-battery-charging-blink-full-solid";
+	// 	gpios = <&axp_gpio 99 1>; /* CHGLED on pmu, low active */
+	// };
+};
+
+&dsi1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	port {
+		dsi_out_port: endpoint {
+			remote-endpoint = <&panel_dsi_port>;
+		};
+	};
+
+	panel_cwd686_cm3: panel@0 {
+		compatible = "cw,cwd686-cm3";
+		reg = <0>;
+		reset-gpio = <&gpio 8 1>; /* GPIO8 ACTIVE LOW */
+		backlight = <&ocp8178_backlight>;
+		rotation = <90>;
+		iovcc-supply = <&reg_dcdc3>;
+		vci-supply = <&reg_aldo2>;
+
+		port {
+			panel_dsi_port: endpoint {
+				remote-endpoint = <&dsi_out_port>;
+			};
+		};
+	};
+};
