@@ -214,8 +214,8 @@
 				};
 			};
 
-			panel_cwu50_cm4: panel@0 {
-				compatible = "cw,cwu50-cm4";
+			panel_cwu50: panel@0 {
+				compatible = "cw,cwu50";
 				reg = <0>;
 				reset-gpio = <&gpio 8 1>;
 				backlight = <&ocp8178_backlight>;
