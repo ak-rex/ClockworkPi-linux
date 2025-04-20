@@ -220,6 +220,7 @@
 				reset-gpio = <&gpio 8 1>;
 				backlight = <&ocp8178_backlight>;
 				rotation = <90>;
+				iovcc-supply = <&reg_aldo2>;
 
 				port {
 					panel_dsi_port: endpoint {

@@ -13,11 +13,13 @@
 struct cwu50 {
 	struct device *dev;
 	struct drm_panel panel;
-	struct regulator *supply;
+	struct regulator *vci;
+	struct regulator *iovcc;
 	struct gpio_desc *id_gpio;
 	struct backlight_device *backlight;
 	bool prepared;
 	bool enabled;
+	bool is_new_panel;
 	enum drm_panel_orientation orientation;
 };
 
@@ -259,11 +261,6 @@ static void cwu50_init_sequence(struct cwu50 *ctx)
 	dcs_write_seq(0xE0,0x00);
 	dcs_write_seq(0xE6,0x02);
 	dcs_write_seq(0xE7,0x02);
-	dcs_write_seq(0x11);// SLPOUT
-	msleep (120);
-	dcs_write_seq(0x29);// DSPON
-	msleep (20);
-	dcs_write_seq(0x35,0x00);
 }
 static int cwu50_init_sequence2(struct cwu50 *ctx)
 {
@@ -555,7 +552,6 @@ static int cwu50_unprepare(struct drm_panel *panel)
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 	int ret;
 
-#if 0
 	if (!ctx->prepared)
 		return 0;
 
@@ -572,11 +568,14 @@ static int cwu50_unprepare(struct drm_panel *panel)
 	}
 	msleep(120);
 
-	gpiod_set_value_cansleep(ctx->reset_gpio, 0);
-	msleep(5);
+	if (!ctx->is_new_panel) {
+		/* Assert reset on RESX */
+		dev_info(ctx->dev, "asserting reset pin for old panel\n");
+		gpiod_set_value_cansleep(ctx->id_gpio, 1);
+		msleep(5);
+	}
 
 	ctx->prepared = false;
-#endif
 
 	return 0;
 }
@@ -590,10 +589,41 @@ static int cwu50_prepare(struct drm_panel *panel)
 	if (ctx->prepared)
 		return 0;
 
-	//gpiod_set_value_cansleep(ctx->reset_gpio, 0);
-	//msleep(10);
-	//gpiod_set_value_cansleep(ctx->reset_gpio, 1);
-	//msleep(120);
+	if (ctx->iovcc != NULL && ctx->vci != NULL) {
+		dev_info(ctx->dev, "regulator iovcc and vci defined, enabling\n");
+
+		/* IOVCC first, then VCI */
+		ret = regulator_enable(ctx->iovcc);
+		if (ret) {
+			dev_err(ctx->dev, "failed to enable iovcc (%d)\n", ret);
+			return ret;
+		}
+
+		/* tPWON>= 0ms */
+
+		/* MIPI should change to LP-11 after turning on vci according to JD9365D.pdf */
+		ret = regulator_enable(ctx->vci);
+		if (ret) {
+			dev_err(ctx->dev, "failed to enable vci (%d)\n", ret);
+			regulator_disable(ctx->iovcc);
+			return ret;
+		}
+
+		/* Wait for MIPI to initialize
+		 * tRPWIRES >= 5ms
+		 * 0 <= tMIPI_ON <= tRPWIRES
+		 */
+		msleep(5);
+	}
+
+	if (!ctx->is_new_panel) {
+		dev_info(ctx->dev, "old panel, cycling the reset pin\n");
+		/* Cycle RESX (Hardware Reset) */
+		gpiod_set_value_cansleep(ctx->id_gpio, 1);
+		msleep(10);
+		gpiod_set_value_cansleep(ctx->id_gpio, 0);
+		msleep(5);
+	}
 
 	/* Enabe tearing mode: send TE (tearing effect) at VBLANK */
 	ret = mipi_dsi_dcs_set_tear_on(dsi, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
@@ -602,8 +632,7 @@ static int cwu50_prepare(struct drm_panel *panel)
 		return ret;
 	}
 	/* Exit sleep mode and power on */
-	ret = gpiod_get_value_cansleep(ctx->id_gpio);
-	if(ret)
+	if (ctx->is_new_panel)
 		cwu50_init_sequence2(ctx);
 	else
 		cwu50_init_sequence(ctx);
@@ -679,7 +708,7 @@ static int cwu50_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
 	struct cwu50 *ctx;
-	int ret;
+	int ret, err;
 
 	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
@@ -698,6 +727,59 @@ static int cwu50_probe(struct mipi_dsi_device *dsi)
 		if (ret != -EPROBE_DEFER)
 			dev_err(dev, "failed to request GPIO (%d)\n", ret);
 		return ret;
+	}
+
+	ctx->is_new_panel = gpiod_get_value_cansleep(ctx->id_gpio);
+	if (ctx->is_new_panel) {
+		dev_info(dev, "Detected new panel type\n");
+	} else {
+		dev_info(dev, "Detected old panel type\n");
+	}
+
+	/*
+	 * Switch the ID GPIO to OUTPUT for use with resetting,
+	 * only if we're using the old panel. The new panel's
+	 * ID (RESX) pin is always pulled down (or: asserted)
+	 * externally.
+	 */
+	if (!ctx->is_new_panel) {
+		dev_info(dev, "Old panel type, setting ID GPIO to OUTPUT for resetting\n");
+		ret = gpiod_direction_output(ctx->id_gpio, 0);
+
+		if (ret) {
+			dev_err(dev, "failed to set id_gpio to OUTPUT\n");
+			return ret;
+		}
+	}
+
+	/*
+	 * Request vci and iovcc regulators when they are defined
+	 * Even though these regulartors may be always-on, we still need
+	 * to ensure that the panel only becomes ready _after_ them.
+	 * This is achieved by bubbling up EPROBE_DEFER from them.
+	 */
+	ctx->vci = devm_regulator_get(dev, "vci");
+	if (IS_ERR(ctx->vci)) {
+		err = PTR_ERR(ctx->vci);
+		if (err == -EPROBE_DEFER) {
+			dev_info(dev, "vci regulator isn't ready, retry later\n");
+			return err;
+		}
+
+		dev_err(dev, "Failed to request vci regulator: %d\n", err);
+		ctx->vci = NULL;
+	}
+
+	ctx->iovcc = devm_regulator_get(dev, "iovcc");
+	if (IS_ERR(ctx->iovcc)) {
+		err = PTR_ERR(ctx->iovcc);
+		if (err == -EPROBE_DEFER) {
+			dev_info(dev, "iovcc regulator isn't ready, retry later\n");
+			return err;
+		}
+
+		dev_err(dev, "Failed to request iovcc regulator: %d\n", err);
+		ctx->iovcc = NULL;
 	}
 
 	ctx->backlight = devm_of_find_backlight(dev);
