@@ -302,6 +302,7 @@ struct drm_plane_state *vc4_plane_duplicate_state(struct drm_plane *plane)
 		refcount_inc(&hvs->lbm_refcounts[vc4_state->lbm_handle].refcount);
 
 	vc4_state->dlist_initialized = 0;
+	vc4_state->is_yuv444_unity = false;
 
 	__drm_atomic_helper_plane_duplicate_state(plane, &vc4_state->base);
 
@@ -851,6 +852,9 @@ static size_t vc6_upm_size(const struct drm_plane_state *state,
 		else
 			stride = ALIGN(state->fb->width, 128);
 	}
+	if (!plane && (state->fb->format->format == DRM_FORMAT_YUV444 ||
+		       state->fb->format->format == DRM_FORMAT_YVU444))
+		stride <<= 1;
 	/*
 	 * TODO: This only works for raster formats, and is sub-optimal
 	 * for buffers with a stride aligned on 32 bytes.
@@ -868,6 +872,10 @@ static void vc4_write_scaling_parameters(struct drm_plane_state *state,
 {
 	struct vc4_dev *vc4 = to_vc4_dev(state->plane->dev);
 	struct vc4_plane_state *vc4_state = to_vc4_plane_state(state);
+	bool no_interpolate = state->scaling_filter == DRM_SCALING_FILTER_NEAREST_NEIGHBOR;
+
+	if (vc4_state->is_yuv444_unity)
+		no_interpolate = 1;
 
 	WARN_ON_ONCE(vc4->gen > VC4_GEN_6_D);
 
@@ -876,7 +884,7 @@ static void vc4_write_scaling_parameters(struct drm_plane_state *state,
 		vc4_write_ppf(vc4_state, vc4_state->src_w[channel],
 			      vc4_state->crtc_w, vc4_state->src_x, channel,
 			      state->chroma_siting_h,
-			      state->scaling_filter == DRM_SCALING_FILTER_NEAREST_NEIGHBOR);
+			      no_interpolate);
 	}
 
 	/* Ch0 V-PPF Words 0-1: Scaling Parameters, Context */
@@ -884,7 +892,7 @@ static void vc4_write_scaling_parameters(struct drm_plane_state *state,
 		vc4_write_ppf(vc4_state, vc4_state->src_h[channel],
 			      vc4_state->crtc_h, vc4_state->src_y, channel,
 			      state->chroma_siting_v,
-			      state->scaling_filter == DRM_SCALING_FILTER_NEAREST_NEIGHBOR);
+			      no_interpolate);
 		vc4_dlist_write(vc4_state, 0xc0c0c0c0);
 	}
 
@@ -1854,6 +1862,31 @@ static int vc6_plane_mode_set(struct drm_plane *plane,
 	if (ret)
 		return ret;
 
+	if (state->fb->format->format == DRM_FORMAT_YUV444 ||
+	    state->fb->format->format == DRM_FORMAT_YVU444) {
+		/* Similar to YUV422 requiring the chroma scaler to always be
+		 * enabled that is handled in vc4_plane_setup_clipping_and_scaling,
+		 * GEN6 requires the scaler for the luma channel to be enabled
+		 * for YUV444.
+		 */
+		if (vc4_state->x_scaling[0] == VC4_SCALING_NONE) {
+			vc4_state->x_scaling[0] = VC4_SCALING_PPF;
+			vc4_state->is_unity = false;
+			vc4_state->is_yuv444_unity = true;
+		}
+
+		if (vc4_state->y_scaling[0] == VC4_SCALING_NONE) {
+			vc4_state->y_scaling[0] = VC4_SCALING_PPF;
+			vc4_state->is_unity = false;
+		} else {
+			/* Ensure that resizing vertically but not horizontally
+			 * doesn't switch the scaling filter.
+			 */
+			vc4_state->is_yuv444_unity = false;
+		}
+
+	}
+
 	if (!vc4_state->src_w[0] || !vc4_state->src_h[0] ||
 	    !vc4_state->crtc_w || !vc4_state->crtc_h) {
 		/* 0 source size probably means the plane is offscreen.
@@ -2178,6 +2211,9 @@ static int vc6_plane_mode_set(struct drm_plane *plane,
 				filter = &vc4->hvs->nearest_neighbour_filter;
 				break;
 			}
+			if (vc4_state->is_yuv444_unity)
+				filter = &vc4->hvs->nearest_neighbour_filter;
+
 			u32 kernel = VC4_SET_FIELD(filter->start,
 						   SCALER_PPF_KERNEL_OFFSET);
 
@@ -2337,7 +2373,7 @@ void vc4_plane_async_set_fb(struct drm_plane *plane, struct drm_framebuffer *fb)
 	 */
 	WARN_ON_ONCE(plane->state->crtc_x < 0 || plane->state->crtc_y < 0);
 
-	if (vc4->gen == VC4_GEN_6_C) {
+	if (vc4->gen >= VC4_GEN_6_C) {
 		u32 value;
 
 		value = vc4_state->dlist[vc4_state->ptr0_offset[0]] &
