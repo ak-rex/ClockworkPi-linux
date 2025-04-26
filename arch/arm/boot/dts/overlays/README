@@ -2567,11 +2567,17 @@ Params: addr                    Set the address for the ADT7410, AS73211,
         sgp30                   Select the Sensirion SGP30 VOC sensor.
                                 Fixed address 0x58.
 
+        tcs3472                 Select the AMS TAOS TCS3472 family of RGBW light
+                                sensors.
+                                Valid addresses 0x48-0x4b, default 0x48
+
         tmp102                  Select the Texas Instruments TMP102 temp sensor
                                 Valid addresses 0x48-0x4b, default 0x48
 
         tsl4531                 Select the AMS TSL4531 digital ambient light
                                 sensor
+
+        veml6040                Select the Vishay VEML6040 RGBW light sensor
 
         veml6070                Select the Vishay VEML6070 ultraviolet light
                                 sensor
@@ -5076,6 +5082,21 @@ Info:   Used in combination with the tc358743-fast overlay to route the audio
         20.
 Load:   dtoverlay=tc358743-audio,<param>=<val>
 Params: card-name               Override the default, "tc358743", card name.
+
+
+Name:   tc358743-pi5
+Info:   Toshiba TC358743 HDMI to CSI-2 bridge chip for Pi5.
+        Uses Unicam 1, which is the standard camera connector on most Pi
+        variants.
+Load:   dtoverlay=tc358743-pi5,<param>=<val>
+Params: 4lane                   Use 4 lanes (only applicable to Compute Modules
+                                CAM1 connector).
+
+        link-frequency          Set the link frequency. Only values of 297000000
+                                (574Mbit/s) and 486000000 (972Mbit/s - default)
+                                are supported by the driver.
+        cam0                    Adopt the default configuration for CAM0 on a
+                                Compute Module (CSI0, i2c_vc, and cam0_reg).
 
 
 Name:   tinylcd35

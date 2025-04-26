@@ -610,10 +610,10 @@ static void brcm_pcie_set_gen(struct brcm_pcie *pcie, int gen)
 	u16 lnkctl2 = readw(pcie->base + BRCM_PCIE_CAP_REGS + PCI_EXP_LNKCTL2);
 	u32 lnkcap = readl(pcie->base + PCIE_RC_CFG_PRIV1_LINK_CAPABILITY);
 
-	u32p_replace_bits(&lnkcap, gen, PCI_EXP_LNKCAP_SLS);
+	lnkcap = (lnkcap & ~PCI_EXP_LNKCAP_SLS) | gen;
 	writel(lnkcap, pcie->base + PCIE_RC_CFG_PRIV1_LINK_CAPABILITY);
 
-	u16p_replace_bits(&lnkctl2, gen, PCI_EXP_LNKCTL2_TLS);
+	lnkctl2 = (lnkctl2 & ~0xf) | gen;
 	writew(lnkctl2, pcie->base + BRCM_PCIE_CAP_REGS + PCI_EXP_LNKCTL2);
 }
 
@@ -1888,7 +1888,7 @@ static int brcm_pcie_add_bus(struct pci_bus *bus)
 
 		ret = regulator_bulk_get(dev, sr->num_supplies, sr->supplies);
 		if (ret) {
-			dev_info(dev, "Did not get regulators; err=%d\n", ret);
+			dev_info(dev, "Did not get regulators, err=%d\n", ret);
 			pcie->sr = NULL;
 			goto no_regulators;
 		}
@@ -2412,7 +2412,6 @@ MODULE_PARM_DESC(trace_ltssm, "Capture and dump link states during link training
 
 static int brcm_pcie_probe(struct platform_device *pdev)
 {
-	struct device_node *msi_np __free(device_node) = NULL;
 	struct device_node *np = pdev->dev.of_node;
 	struct pci_host_bridge *bridge;
 	const struct pcie_cfg_data *data;
@@ -2529,9 +2528,14 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	msi_np = of_parse_phandle(pcie->np, "msi-parent", 0);
-	if (pci_msi_enabled() && msi_np == pcie->np) {
-		ret = brcm_pcie_enable_msi(pcie);
+	if (pci_msi_enabled()) {
+		struct device_node *msi_np = of_parse_phandle(pcie->np, "msi-parent", 0);
+
+		if (msi_np == pcie->np)
+			ret = brcm_pcie_enable_msi(pcie);
+
+		of_node_put(msi_np);
+
 		if (ret) {
 			dev_err(pcie->dev, "probe of internal MSI failed");
 			goto fail;
