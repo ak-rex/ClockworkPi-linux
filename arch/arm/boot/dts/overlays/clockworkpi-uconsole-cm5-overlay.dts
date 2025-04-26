@@ -4,6 +4,8 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/clock/rp1.h>
 
+#include <arm/overlays/audremap-pi5-overlay.dts>
+
 / {
 	compatible = "brcm,bcm2835";
 	fragment@0 {
@@ -181,6 +183,55 @@
 		target-path = "ethernet0";
 		__overlay__ {
 			status = "disabled";
+		};
+	};
+	fragment@6 {
+		target = <&rp1_gpio>;
+		__overlay__ {
+			/*
+			 * Headphones detection pin at GPIO10.
+			 * Pull down/up needs to be disabled -- pull down is applied externally.
+			 */
+			hp_det_gpio: hp-det-gpio {
+				function = "gpio";
+				pins = "gpio10";
+				input-enable;
+				bias-disable;
+			};
+		};
+	};
+	fragment@7 {
+		target-path = "/";
+		__overlay__ {
+			/*
+			 * Amplifier enabling pin at GPIO 11.
+			 * This actually models the _inverse_ of the speaker amplifier:
+			 * instead of enabling the speaker when activated, this defines the GPIO as ACTIVE_LOW so it _disables_ the speaker.
+			 * This is because we need it in simple-card routing for headphones.
+			 */
+			speaker_amp_inv: analog-amplifier {
+				compatible = "simple-audio-amplifier";
+				enable-gpios = <&rp1_gpio 11 1>;
+				VCC-supply = <&reg_aldo1>;
+			};
+		};
+	};
+	fragment@8 {
+		target-path = "/rp1_audio_out_simple_card@0";
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&hp_det_gpio>;
+
+			simple-audio-card,widgets =
+				"Headphone", "Headphones";
+			simple-audio-card,pin-switches =
+				"Headphones";
+			simple-audio-card,hp-det-gpios = <&rp1_gpio 10 0>;
+			simple-audio-card,aux-devs = <&speaker_amp_inv>;
+			// Disable speaker through speaker_amp_inv when headphones are selected.
+			simple-audio-card,routing =
+				"Headphones", "OUTL",
+				"Headphones", "OUTR";
 		};
 	};
 };
