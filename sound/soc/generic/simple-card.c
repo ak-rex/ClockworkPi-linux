@@ -12,6 +12,7 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/string.h>
 #include <sound/simple_card.h>
 #include <sound/soc-dai.h>
@@ -702,6 +703,8 @@ static int simple_get_dais_count(struct simple_util_priv *priv,
 
 static int simple_soc_probe(struct snd_soc_card *card)
 {
+	pm_runtime_disable(card->dev);
+	pm_runtime_forbid(card->dev);
 	struct simple_util_priv *priv = snd_soc_card_get_drvdata(card);
 	int ret;
 
