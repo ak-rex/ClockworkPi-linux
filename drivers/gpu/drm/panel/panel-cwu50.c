@@ -585,6 +585,7 @@ static int cwu50_prepare(struct drm_panel *panel)
 	struct cwu50 *ctx = panel_to_cwu50(panel);
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 	int ret;
+	u8 buf[4];
 
 	if (ctx->prepared)
 		return 0;
@@ -632,6 +633,13 @@ static int cwu50_prepare(struct drm_panel *panel)
 		return ret;
 	}
 	/* Exit sleep mode and power on */
+	dcs_write_seq(0x11);// SLPOUT
+        msleep(120);
+        dcs_write_seq(0xE0,0x00);
+        mipi_dsi_dcs_read(dsi, 0x04, buf, 3);
+	
+        if(buf[0] == 0x39) ctx->is_new_panel = 1;
+
 	if (ctx->is_new_panel)
 		cwu50_init_sequence2(ctx);
 	else
