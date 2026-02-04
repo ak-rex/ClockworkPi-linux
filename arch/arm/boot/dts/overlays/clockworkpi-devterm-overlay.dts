@@ -83,22 +83,8 @@
 			bootargs = "8250.nr_uarts=1";
 		};
 	};
-	
+
 	fragment@5 {
-		target = <&pcie0>;
-		__overlay__ {
-			status = "disabled";
-		};
-	};
-
-	fragment@6 {
-		target = <&genet>;
-		__overlay__ {
-			status = "disabled";
-		};
-	};
-
-	fragment@7 {
 		target = <&i2c0if>;
 		__overlay__ {
 			#address-cells = <1>;
@@ -170,21 +156,21 @@
 		};
 	};
 
-	fragment@8 {
+	fragment@6 {
 		target = <&i2c0if>;
 		__overlay__ {
 			compatible = "brcm,bcm2708-i2c";
 		};
 	};
 
-	fragment@9 {
+	fragment@7 {
 		target-path = "/aliases";
 		__overlay__ {
 			i2c0 = "/soc/i2c@7e205000";
 		};
 	};
 
-	fragment@10 {
+	fragment@8 {
 		target-path = "/";
 		__overlay__  {
 			battery: battery@0 {
@@ -201,7 +187,7 @@
 		};
 	};
 
-	fragment@11 {
+	fragment@9 {
 		target=<&dsi1>;
 		__overlay__ {
 			#address-cells = <1>;
@@ -230,7 +216,7 @@
 		};
 	};
 
-	fragment@12 {
+	fragment@10 {
 		target-path = "/";
 		__overlay__  {
 			ocp8178_backlight: backlight@0 {

@@ -178,10 +178,4 @@
 			};
 		};
 	};
-	fragment@5 {
-		target-path = "ethernet0";
-		__overlay__ {
-			status = "disabled";
-		};
-	};
 };
