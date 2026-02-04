@@ -1,0 +1,187 @@
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/clock/rp1.h>
+
+
+/ {
+	compatible = "brcm,bcm2835";
+	fragment@0 {
+		target = <&i2c0>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			compatible = "i2c-gpio";
+			reg = <3>;
+			pinctrl-0 = <&i2c0_pins>;
+			pinctrl-names = "default";
+			gpios = <&rp1_gpio 0 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)
+					&rp1_gpio 1 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)>;
+			i2c-gpio,delay-us = <2>;
+			status = "okay";
+			axp22x: pmic@34 {
+				interrupt-controller;
+				#interrupt-cells = <1>;
+				compatible = "x-powers,axp228", "x-powers,axp223", "x-powers,axp221";
+				reg = <0x34>;
+				interrupt-parent = <&rp1_gpio>;
+				interrupts = <2 8>; /* Adjusted IRQ for RP1 */
+				irq-gpios = <&rp1_gpio 2 0>;
+				regulators {
+					x-powers,dcdc-freq = <3000>;
+					reg_aldo1: aldo1 {
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+						regulator-name = "audio-vdd";
+					};
+					reg_aldo2: aldo2 {
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+						regulator-name = "disp-vcc";
+					};
+					reg_aldo3: aldo3 {
+						regulator-boot-off;
+						regulator-name = "wifi-vdd";
+					};
+					reg_dldo1: dldo1 {
+						regulator-boot-off;
+						regulator-name = "wifi-vbat-1";
+					};
+					reg_dldo2: dldo2 {
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+						regulator-name = "ext-3v3-1";
+					};
+					reg_dldo3: dldo3 {
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+						regulator-name = "ext-3v3-2";
+					};
+					reg_dldo4: dldo4 {
+						regulator-always-on;
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+						regulator-name = "ext-3v3-3";
+					};
+					reg_dcdc3: dcdc3 {
+						regulator-always-on;
+						regulator-min-microvolt = <1800000>;
+						regulator-max-microvolt = <1800000>;
+						regulator-name = "sys-1v8";
+					};
+					reg_eldo1: eldo1 {
+						regulator-boot-off;
+						regulator-name = "wifi-vbat-2";
+					};
+					reg_eldo2: eldo2 {
+						regulator-boot-off;
+						regulator-name = "wifi-vbat-3";
+					};
+					reg_eldo3: eldo3 {
+						regulator-boot-off;
+						regulator-name = "wifi-vbat-4";
+					};
+				};
+				battery_power_supply: battery-power-supply {
+					compatible = "x-powers,axp221-battery-power-supply";
+					monitored-battery = <&battery>;
+				};
+				ac_power_supply: ac_power_supply {
+					compatible = "x-powers,axp221-ac-power-supply";
+				};
+				usb_power_supply: usb-power {
+					compatible = "x-powers,axp223-usb-power-supply";
+					status = "disabled";
+				};
+				axp_adc: adc {
+					compatible = "x-powers,axp221-adc";
+					#io-channel-cells = <1>;
+				};
+				axp_gpio: gpio {
+					compatible = "x-powers,axp221-gpio";
+					#gpio-cells = <2>;
+					gpio-controller;
+					status = "disabled";
+					gpio0_out: gpio0-out-pin {
+						pins = "GPIO0";
+						function = "gpio_out";
+					};
+				};
+			};
+		};
+	};
+	fragment@1 {
+		target-path = "/";
+		__overlay__  {
+			battery: battery@0 {
+				compatible = "simple-battery";
+				device-chemistry = "lithium-ion";
+				constant-charge-current-max-microamp = <2100000>;
+				voltage-max-design-microvolt = <4200000>;
+				re-charge-voltage-microvolt = <4000000>;
+				voltage-min-design-microvolt = <2900000>;
+				energy-full-design-microwatt-hours = <24790000>;
+				charge-full-design-microamp-hours = <6700000>;
+			};
+		};
+	};
+	fragment@2 {
+		target = <&i2c1>;
+		__overlay__ {
+			status = "okay";
+			pinctrl-0 = <&rp1_i2c1_2_3>;
+			clock-frequency = <100000>;
+		};
+	};
+	fragment@3 {
+		target-path = "/";
+		__overlay__ {
+			ocp8178_backlight: backlight@0 {
+				compatible = "ocp8178-backlight";
+				backlight-control-gpios = <&rp1_gpio 9 0>;
+				default-brightness = <5>;
+			};
+		};
+	};
+	fragment@4 {
+		target = <&dsi1>; // dsi1 has iommu property
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+			assigned-clocks = <&rp1_clocks RP1_CLK_MIPI1_DSI_BYTECLOCK>, <&rp1_clocks RP1_CLK_MIPI1_DPI>;
+			assigned-clock-rates = <45833333>, <61111240>;
+			port {
+				dsi_out_port: endpoint {
+					remote-endpoint = <&panel_dsi_port>;
+				};
+			};
+			panel_cwu50: panel@0 {
+				compatible = "cw,cwu50";
+				reg = <0>;
+				reset-gpio = <&rp1_gpio 8 1>; /* GPIO_ACTIVE_LOW */
+				backlight = <&ocp8178_backlight>;
+				rotation = <90>;
+				vci-supply = <&reg_dcdc3>;
+				iovcc-supply = <&reg_aldo2>;
+				status = "okay";
+				port {
+					panel_dsi_port: endpoint {
+						remote-endpoint = <&dsi_out_port>;
+					};
+				};
+			};
+		};
+	};
+	fragment@5 {
+		target-path = "ethernet0";
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+};

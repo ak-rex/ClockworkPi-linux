@@ -1,0 +1,19 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835";
+
+	fragment@0 {
+		target-path = "/battery@0";
+		frag0: __overlay__ {
+			energy-full-design-microwatt-hours = <24790000>;
+			charge-full-design-microamp-hours = <6700000>;
+		};
+	};
+
+	__overrides__ {
+		energy_full_design_uwh = <&frag0>, "energy-full-design-microwatt-hours:0";
+		charge_full_design_uah = <&frag0>, "charge-full-design-microamp-hours:0";
+	};
+};
