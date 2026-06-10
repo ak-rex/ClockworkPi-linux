@@ -424,7 +424,7 @@ static int axp20x_battery_get_prop(struct power_supply *psy,
 
 		/* IIO framework gives mV but Power Supply framework gives uV */
 		val->intval *= 1000;
-		axp20x_batt->current_now = val->intval;
+		axp20x_batt->voltage_now = val->intval;
 
 		break;
 
