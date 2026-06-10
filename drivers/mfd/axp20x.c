@@ -1231,7 +1231,23 @@ static int axp20x_power_off(struct sys_off_data *data)
 		break;
 	}
 
-	regmap_write(axp20x->regmap, shutdown_reg, AXP20X_OFF);
+	/*
+	 * On the AXP221/AXP223 (and the register-compatible AXP228) the
+	 * power-off control register also holds the CHGLED auto-control
+	 * bit. A blind write clears it, leaving the charge LED dark while
+	 * the board is powered off and charging; set only the power-off
+	 * bit so that configuration is preserved. Other variants keep the
+	 * full-register write.
+	 */
+	switch (axp20x->variant) {
+	case AXP221_ID:
+	case AXP223_ID:
+		regmap_set_bits(axp20x->regmap, shutdown_reg, AXP20X_OFF);
+		break;
+	default:
+		regmap_write(axp20x->regmap, shutdown_reg, AXP20X_OFF);
+		break;
+	}
 
 	/* Give capacitors etc. time to drain to avoid kernel panic msg. */
 	mdelay(500);
