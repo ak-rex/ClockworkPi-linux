@@ -392,8 +392,8 @@
 		};
 	};
 
-	panel_cwu50: panel@0 {
-		compatible = "clockwork,cwu50";
+	panel_cwu50_cm3: panel@0 {
+		compatible = "clockwork,cwu50-cm3";
 		reg = <0>;
 		reset-gpio = <&gpio 8 1>; /* GPIO8 ACTIVE LOW */
 		backlight = <&ocp8178_backlight>;
