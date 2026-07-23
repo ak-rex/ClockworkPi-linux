@@ -32,6 +32,13 @@ config VIDEO_FIXED_MINOR_RANGES
 
 	  When in doubt, say N.
 
+config VIDEO_V4L2_LOOPBACK
+    tristate "V4L2 loopback video device support"
+    help
+      This module allows you to create virtual video devices.
+      Normal V4L2 applications will read these devices as if they
+      were ordinary webcams, but the data is fed by another app.
+
 # Used by drivers that need tuner.ko
 config VIDEO_TUNER
 	tristate

@@ -36,3 +36,4 @@ obj-$(CONFIG_V4L2_VP9) += v4l2-vp9.o
 
 obj-$(CONFIG_VIDEO_TUNER) += tuner.o
 obj-$(CONFIG_VIDEO_DEV) += v4l2-dv-timings.o videodev.o
+obj-$(CONFIG_VIDEO_V4L2_LOOPBACK) += v4l2loopback.o
