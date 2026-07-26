@@ -49,6 +49,10 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	clockworkpi-uconsole-cm4.dtbo \
 	clockworkpi-uconsole-cm4s.dtbo \
 	clockworkpi-uconsole-cm5.dtbo \
+	cardputerzero.dtbo \
+		spk-gpio24-high.dtbo \
+		spi0-spidev2-gpio22.dtbo \
+		camera-gpio16-high.dtbo \
 	cm-swap-i2c0.dtbo \
 	cma.dtbo \
 	crystalfontz-cfa050_pi_m.dtbo \

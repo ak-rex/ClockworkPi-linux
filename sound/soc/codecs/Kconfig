@@ -1288,6 +1288,13 @@ config SND_SOC_ES8328_I2C
 	depends on I2C
 	select SND_SOC_ES8328
 
+config SND_SOC_ES8389_M5STACK
+	tristate "Everest ES8389 CODEC (CardputerZero)"
+	depends on I2C
+	help
+	  Everest ES8389 audio CODEC as wired on CardputerZero
+	  (es8390@0x10, 12.288MHz fixed MCLK).
+
 config SND_SOC_ES8328_SPI
 	tristate "Everest Semi ES8328 CODEC (SPI)"
 	depends on SPI_MASTER

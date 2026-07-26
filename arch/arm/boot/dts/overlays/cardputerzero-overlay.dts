@@ -1,0 +1,494 @@
+// Definitions for ES8389 Audio HAT
+/dts-v1/;
+/plugin/;
+// dtc -@ -I dts -O dtb -o es8389_m5stack.dtbo  es8389_m5stack.dts
+/ {
+    compatible = "brcm,bcm2835";
+    
+    fragment@0 {
+        target = <&i2s_clk_producer>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    fragment@1 {
+        target = <&gpio>;
+        __overlay__ {
+            st7789v_pins: st7789v_pins {
+                    brcm,pins = <25>;
+                    brcm,function = <1>;
+                    brcm,pull = <0>;
+            };
+            tca8418_pins: tca8418_pins {
+                    brcm,pins = <27 17 16>;
+                    brcm,function = <0 1 1>;
+                    brcm,pull = <2 0 0>;
+            };
+            spk_en_pins: spk_en_pins {
+                    brcm,pins = <24>;
+                    brcm,function = <1>;
+                    brcm,pull = <0>;
+            };
+            cam_en_pins: cam_en_pins {
+                    brcm,pins = <16>;
+                    brcm,function = <1>;
+                    brcm,pull = <0>;
+            };
+            // always_high_pin: always-high {
+            //     gpio-hog;
+            //     gpios = <24 0>;
+            //     output-high;
+            //     line-name = "always-high-pin";
+            // };
+            // cam_high_pin: cam-high {
+            //     gpio-hog;
+            //     gpios = <16 0>;
+            //     output-high;
+            //     line-name = "cam-high-pin";
+            // };
+        };
+    };
+
+    fragment@2 {
+        target = <&i2c1>;
+        __overlay__ {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            status = "okay";
+
+            py32io16: gpio@4f {
+                    compatible = "m5stack,py32io16";
+                    reg = <0x4f>;
+                    gpio-controller;
+                    #gpio-cells = <2>;
+                    ngpios = <16>;
+                    #pwm-cells = <3>;
+                    status = "okay";
+            };
+            es8390: es8390@10 {
+                compatible = "everest,es8390";
+                reg = <0x10>;
+                #sound-dai-cells = <0>;
+                pinctrl-names = "default";
+                pinctrl-0 = <&spk_en_pins>;
+                clock-names = "mclk";
+                clocks = <&es8390_mclk>;
+                // spk-enable-gpios = <&gpio 24 1>;
+                status = "okay";
+            };
+			hpamp: hpamp@60 {
+				compatible = "ti,tpa6130a2";
+				reg = <0x60>;
+                power-supply = <&hpamp_regulator>;
+				status = "okay";
+			};
+            rx8130: rx8130@32 {
+                compatible = "epson,rx8130";
+                reg = <0x32>;
+                status = "okay";
+            };
+
+            imu@68 {
+                compatible = "bosch,bmi270";
+                reg = <0x68>;
+                status = "okay";
+            };
+
+            tca8418@34 {
+                compatible = "m5stack,tca8418c"; 
+                reg = <0x34>;
+                pinctrl-names = "default";
+                pinctrl-0 = <&tca8418_pins>;
+                interrupt-parent = <&gpio>;
+                interrupts = <27 2>; /* 中断io 下沿触发  */
+                irq-gpios = <&gpio 27 0x00>; /* 中断io 下沿触发 */
+                    
+                keypad,num-rows = <5>;
+                keypad,num-columns = <10>;
+
+                // tables-sel-gpio = <&gpio 17 1>;
+                // capslock-gpio = <&gpio 16 1>;
+                tables-sel-gpio = <&py32io16 8 1>;
+                capslock-gpio = <&py32io16 7 1>;
+
+                sym-button-code = <0x43>; 
+                fn-button-code = <0x42>;  
+                asmux-button-code = <0x41>; 
+
+
+                // switch-button-code = <73>; /* 切换按键 keycode */
+                // interrupt-controller;
+                /* row | column | key-code  例如: 04,08,0010 q 键 */
+                /* row | column | key-code  例如: 04,08,0010 => Q 键 */
+                linux,keymap = <
+0x04000001 /* row=0x04 col=0x00 keycode=0x0001  KEY_ESC        Esc */
+0x0409000f /* row=0x04 col=0x09 keycode=0x000f  KEY_TAB        Tab */
+
+0x04040002 /* row=0x04 col=0x04 keycode=0x0002  KEY_1          1 */
+0x00000003 /* row=0x00 col=0x00 keycode=0x0003  KEY_2          2 */
+0x00010004 /* row=0x00 col=0x01 keycode=0x0004  KEY_3          3 */
+0x00020005 /* row=0x00 col=0x02 keycode=0x0005  KEY_4          4 */
+0x00030006 /* row=0x00 col=0x03 keycode=0x0006  KEY_5          5 */
+0x00040007 /* row=0x00 col=0x04 keycode=0x0007  KEY_6          6 */
+0x00050008 /* row=0x00 col=0x05 keycode=0x0008  KEY_7          7 */
+0x00060009 /* row=0x00 col=0x06 keycode=0x0009  KEY_8          8 */
+0x0007000a /* row=0x00 col=0x07 keycode=0x000a  KEY_9          9 */
+0x0008000b /* row=0x00 col=0x08 keycode=0x000b  KEY_0          0 */
+0x0009000e /* row=0x00 col=0x09 keycode=0x000e  KEY_BACKSPACE  Backspace */
+
+/* 0x0403000f  sym功能键 */ 
+0x01000010 /* row=0x01 col=0x00 keycode=0x0010  KEY_Q          Q */
+0x01010011 /* row=0x01 col=0x01 keycode=0x0011  KEY_W          W */
+0x01020012 /* row=0x01 col=0x02 keycode=0x0012  KEY_E          E */
+0x01030013 /* row=0x01 col=0x03 keycode=0x0013  KEY_R          R */
+0x01040014 /* row=0x01 col=0x04 keycode=0x0014  KEY_T          T */
+0x01050015 /* row=0x01 col=0x05 keycode=0x0015  KEY_Y          Y */
+0x01060016 /* row=0x01 col=0x06 keycode=0x0016  KEY_U          U */
+0x01070017 /* row=0x01 col=0x07 keycode=0x0017  KEY_I          I */
+0x01080018 /* row=0x01 col=0x08 keycode=0x0018  KEY_O          O */
+0x01090019 /* row=0x01 col=0x09 keycode=0x0019  KEY_P          P */
+
+
+0x0401002a /* row=0x04 col=0x01 keycode=0x002a  KEY_LEFTSHIFT    Left Shift */
+0x0200001e /* row=0x02 col=0x00 keycode=0x001e  KEY_A          A */
+0x0201001f /* row=0x02 col=0x01 keycode=0x001f  KEY_S          S */
+0x02020020 /* row=0x02 col=0x02 keycode=0x0020  KEY_D          D */
+0x02030021 /* row=0x02 col=0x03 keycode=0x0021  KEY_F          F */
+0x02040022 /* row=0x02 col=0x04 keycode=0x0022  KEY_G          G */
+0x02050023 /* row=0x02 col=0x05 keycode=0x0023  KEY_H          H */
+0x02060024 /* row=0x02 col=0x06 keycode=0x0024  KEY_J          J */
+0x02070025 /* row=0x02 col=0x07 keycode=0x0025  KEY_K          K */
+0x02080026 /* row=0x02 col=0x08 keycode=0x0026  KEY_L          L */
+0x0209001c /* row=0x02 col=0x09 keycode=0x001c  KEY_ENTER      Enter */
+
+/* 0x0402002a  fn功能键 */
+0x0300001d /* row=0x03 col=0x00 keycode=0x001d  KEY_LEFTCTRL   Left Ctrl */
+0x03010038 /* row=0x03 col=0x01 keycode=0x0038  KEY_LEFTALT    Left Alt  */
+0x0302002c /* row=0x03 col=0x02 keycode=0x002d  KEY_Z          Z */
+0x0303002d /* row=0x03 col=0x03 keycode=0x002e  KEY_X          X */
+0x0304002e /* row=0x03 col=0x04 keycode=0x002f  KEY_C          C */
+0x0305002f /* row=0x03 col=0x05 keycode=0x0030  KEY_V          V */
+0x03060030 /* row=0x03 col=0x06 keycode=0x0031  KEY_B          B */
+0x03070031 /* row=0x03 col=0x07 keycode=0x0032  KEY_N          N */
+0x03080032 /* row=0x03 col=0x08 keycode=0x0033  KEY_M          M */
+0x03090039 /* row=0x03 col=0x09 keycode=0x0039  KEY_SPACE      Space */
+>;
+                /* row | column | key-code */
+                linux,keymap1 = <
+0x04000001 /* row=0x04 col=0x00 keycode=0x0001  KEY_ESC        Esc */
+0x0409000f /* row=0x04 col=0x09 keycode=0x000f  KEY_TAB        Tab */
+
+
+0x040400b7 /* row=0x04 col=0x04 keycode=0x00b7  KEY_F13          F13 */
+0x000000b8 /* row=0x00 col=0x00 keycode=0x00b8  KEY_F14          F14 */
+0x000100b9 /* row=0x00 col=0x01 keycode=0x00b9  KEY_F15          F15 */
+0x000200ba /* row=0x00 col=0x02 keycode=0x00ba  KEY_F16          F16 */
+0x000300bb /* row=0x00 col=0x03 keycode=0x00bb  KEY_F17          F17 */
+0x000400bc /* row=0x00 col=0x04 keycode=0x00bc  KEY_F18          F18 */
+0x000500bd /* row=0x00 col=0x05 keycode=0x00bd  KEY_F19          F19 */
+0x000600be /* row=0x00 col=0x06 keycode=0x00be  KEY_F20          F20 */
+0x000700bf /* row=0x00 col=0x07 keycode=0x00bf  KEY_F21          F21 */
+0x000800c0 /* row=0x00 col=0x08 keycode=0x00c0  KEY_F22          F22 */
+0x0009000e /* row=0x00 col=0x09 keycode=0x000e  KEY_BACKSPACE    Backspace */
+
+/* 0x0403000f  sym功能键 */ 
+0x010000c1 /* row=0x01 col=0x00 keycode=0x00c1  KEY_F23          F23 */
+0x010100c2 /* row=0x01 col=0x01 keycode=0x00c2  KEY_F24          F24 */
+0x010200c3 /* row=0x01 col=0x02 keycode=0x00c3  KEY_PLAYCD       Play CD */
+0x010300c4 /* row=0x01 col=0x03 keycode=0x00c4  KEY_PAUSECD      Pause CD */
+0x010400c5 /* row=0x01 col=0x04 keycode=0x00c5  KEY_PROG3        Prog3 */
+0x010500c6 /* row=0x01 col=0x05 keycode=0x00c6  KEY_PROG4        Prog4 */
+0x010600c7 /* row=0x01 col=0x06 keycode=0x00c7  KEY_DASHBOARD    Dashboard */
+0x010700c8 /* row=0x01 col=0x07 keycode=0x00c8  KEY_SUSPEND      Suspend */
+0x010800c9 /* row=0x01 col=0x08 keycode=0x00c9  KEY_CLOSE        Close */
+0x010900ca /* row=0x01 col=0x09 keycode=0x00ca  KEY_PLAY         Play */
+
+
+0x0401003a /* row=0x04 col=0x01 keycode=0x003a  KEY_CAPSLOCK     Caps Lock */
+0x020000e7 /* row=0x02 col=0x00 keycode=0x00e7  KEY_SEND         send */
+0x020100e8 /* row=0x02 col=0x01 keycode=0x00e8  KEY_REPLY        reply */
+0x020200e9 /* row=0x02 col=0x02 keycode=0x00e9  KEY_FORWARDMAIL  FORWARDMAIL */
+0x02030067 /* row=0x02 col=0x03 keycode=0x0067  KEY_UP           Up */
+0x020400d1 /* row=0x02 col=0x04 keycode=0x00d1  KEY_BASSBOOST    Bass Boost */
+0x020500d2 /* row=0x02 col=0x05 keycode=0x00d2  KEY_PRINT        Print */
+0x020600d3 /* row=0x02 col=0x06 keycode=0x00d3  KEY_HP           HP */
+0x020700d4 /* row=0x02 col=0x07 keycode=0x00d4  KEY_CAMERA       Camera */
+0x020800d5 /* row=0x02 col=0x08 keycode=0x00d5  KEY_SOUND        Sound */
+0x0209001c /* row=0x02 col=0x09 keycode=0x001c  KEY_ENTER        Enter */
+
+/* 0x0402002a  fn功能键 */
+0x0300001d /* row=0x03 col=0x00 keycode=0x001d  KEY_LEFTCTRL   Left Ctrl */
+0x03010038 /* row=0x03 col=0x01 keycode=0x0038  KEY_LEFTALT    Left Alt  */
+0x03020069 /* row=0x03 col=0x02 keycode=0x0069  KEY_LEFT         Left */
+0x0303006c /* row=0x03 col=0x03 keycode=0x006c  KEY_DOWN         Down */
+0x0304006a /* row=0x03 col=0x04 keycode=0x006a  KEY_RIGHT        Right */
+0x030500d6 /* row=0x03 col=0x05 keycode=0x00d6  KEY_QUESTION     Question */
+0x030600d7 /* row=0x03 col=0x06 keycode=0x00d7  KEY_EMAIL        Email */
+0x030700d8 /* row=0x03 col=0x07 keycode=0x00d8  KEY_CHAT         Chat */
+0x030800d9 /* row=0x03 col=0x08 keycode=0x00d9  KEY_SEARCH       Search */
+0x03090039 /* row=0x03 col=0x09 keycode=0x0039  KEY_SPACE        Space */
+>;
+                linux,keymap2 = <
+0x04000001 /* row=0x04 col=0x00 keycode=0x0001  KEY_ESC        Esc */
+0x0409000f /* row=0x04 col=0x09 keycode=0x000f  KEY_TAB        Tab */
+
+
+0x0404003b /* row=0x04 col=0x04 keycode=0x003b  KEY_F1           F1 */
+0x0000003c /* row=0x00 col=0x00 keycode=0x003c  KEY_F2           F2 */
+0x0001003d /* row=0x00 col=0x01 keycode=0x003d  KEY_F3           F15 */
+0x0002003e /* row=0x00 col=0x02 keycode=0x003e  KEY_F4           F16 */
+0x0003003f /* row=0x00 col=0x03 keycode=0x003f  KEY_F5           F17 */
+0x00040040 /* row=0x00 col=0x04 keycode=0x0040  KEY_F6           F18 */
+0x00050041 /* row=0x00 col=0x05 keycode=0x0041  KEY_F7           F19 */
+0x00060042 /* row=0x00 col=0x06 keycode=0x0042  KEY_F8           F20 */
+0x00070043 /* row=0x00 col=0x07 keycode=0x0043  KEY_F9           F21 */
+0x00080044 /* row=0x00 col=0x08 keycode=0x0044  KEY_F10          F22 */
+0x0009006f /* row=0x00 col=0x09 keycode=0x006f  KEY_DELETE       del */
+
+/* 0x0403000f  sym功能键 */ 
+0x01000010 /* row=0x01 col=0x00 keycode=0x0010  KEY_Q          Q */
+0x01010011 /* row=0x01 col=0x01 keycode=0x0011  KEY_W          W */
+0x01020012 /* row=0x01 col=0x02 keycode=0x0012  KEY_E          E */
+0x01030013 /* row=0x01 col=0x03 keycode=0x0013  KEY_R          R */
+0x01040014 /* row=0x01 col=0x04 keycode=0x0014  KEY_T          T */
+0x01050015 /* row=0x01 col=0x05 keycode=0x0015  KEY_Y          Y */
+0x01060016 /* row=0x01 col=0x06 keycode=0x0016  KEY_U          U */
+0x01070017 /* row=0x01 col=0x07 keycode=0x0017  KEY_I          I */
+0x01080057 /* row=0x01 col=0x08 keycode=0x0057  KEY_F11        F11 */
+0x01090058 /* row=0x01 col=0x09 keycode=0x0058  KEY_F12        F12 */
+
+
+0x04012a3a /* KEY_LEFTSHIFT/KEY_CAPSLOCK 复用，单击KEY_LEFTSHIFT,双击KEY_CAPSLOCK */
+0x0200001e /* row=0x02 col=0x00 keycode=0x001e  KEY_A          A */
+0x0201001f /* row=0x02 col=0x01 keycode=0x001f  KEY_S          S */
+0x02020020 /* row=0x02 col=0x02 keycode=0x0020  KEY_D          D */
+0x02030067 /* row=0x02 col=0x03 keycode=0x0067  KEY_UP          F */
+0x02040022 /* row=0x02 col=0x04 keycode=0x0022  KEY_G          G */
+0x02050023 /* row=0x02 col=0x05 keycode=0x0023  KEY_H          H */
+0x02060024 /* row=0x02 col=0x06 keycode=0x0024  KEY_J          J */
+0x02070068 /* row=0x02 col=0x07 keycode=0x0068  KEY_PAGEUP          K */
+0x0208006d /* row=0x02 col=0x08 keycode=0x006d  KEY_PAGEDOWN          L */
+0x0209001c /* row=0x02 col=0x09 keycode=0x001c  KEY_ENTER      Enter */
+
+/* 0x0402002a  fn功能键 */
+0x0300001d /* row=0x03 col=0x00 keycode=0x001d  KEY_LEFTCTRL   Left Ctrl */
+0x03010038 /* row=0x03 col=0x01 keycode=0x0038  KEY_LEFTALT    Left Alt  */
+0x03020069 /* row=0x03 col=0x02 keycode=0x0069  KEY_LEFT          Z */
+0x0303006c /* row=0x03 col=0x03 keycode=0x006c  KEY_DOWN          X */
+0x0304006a /* row=0x03 col=0x04 keycode=0x006a  KEY_RIGHT          C */
+0x0305002f /* row=0x03 col=0x05 keycode=0x0030  KEY_V          V */
+0x03060030 /* row=0x03 col=0x06 keycode=0x0031  KEY_B          B */
+0x03070066 /* row=0x03 col=0x07 keycode=0x0066  KEY_HOME          N */
+0x0308006e /* row=0x03 col=0x08 keycode=0x006e  KEY_INSERT          M */
+0x03090039 /* row=0x03 col=0x09 keycode=0x0039  KEY_SPACE      Space */
+>;
+            };
+        };
+    };
+
+
+    fragment@3 {
+        target-path = "/";
+        __overlay__ {
+            es8390_mclk: es8390_mclk {
+                compatible = "fixed-clock";
+                #clock-cells = <0>;
+                clock-frequency = <12288000>;
+            };
+
+            backlight_power: backlight-regulator {
+                compatible = "regulator-fixed";
+                regulator-name = "backlight-vcc";
+                regulator-min-microvolt = <3300000>;
+                regulator-max-microvolt = <3300000>;
+                regulator-boot-on;  /* 启动时就开启 */
+            };
+            hpamp_regulator: hpamp-regulator {
+                compatible = "regulator-fixed";
+                regulator-name = "ext_3v3_out";
+                regulator-min-microvolt = <3300000>;
+                regulator-max-microvolt = <3300000>;
+                regulator-boot-on;
+            };
+            backlight_pwm: backlight {
+                compatible = "m5stack,pwm-backlight";
+                pwms = <&py32io16 3 2000000 0>;
+                
+                brightness-levels = <
+                    0  20000  40000  60000  80000 100000 120000 140000 160000 180000
+                200000 220000 240000 260000 280000 300000 320000 340000 360000 380000
+                400000 420000 440000 460000 480000 500000 520000 540000 560000 580000
+                600000 620000 640000 660000 680000 700000 720000 740000 760000 780000
+                800000 820000 840000 860000 880000 900000 920000 940000 960000 980000
+                1000000 1020000 1040000 1060000 1080000 1100000 1120000 1140000 1160000 1180000
+                1200000 1220000 1240000 1260000 1280000 1300000 1320000 1340000 1360000 1380000
+                1400000 1420000 1440000 1460000 1480000 1500000 1520000 1540000 1560000 1580000
+                1600000 1620000 1640000 1660000 1680000 1700000 1720000 1740000 1760000 1780000
+                1800000 1820000 1840000 1860000 1880000 1900000 1920000 1940000 1960000 1980000
+                2000000
+                >;
+                default-brightness-level = <75>;
+                
+                power-supply = <&backlight_power>;
+                /* 强制初始化时开启背光 */
+                force-enable-on-init;
+            };
+            sound {
+                compatible = "simple-audio-card"; 
+                simple-audio-card,name = "ES8388-Audio";
+                status = "okay";
+                
+                simple-audio-card,dai-link {
+                    format = "i2s";
+                    bitclock-master = <&dailink0_master>;
+                    frame-master = <&dailink0_master>;
+                    
+                    dailink0_master: cpu {
+                        sound-dai = <&i2s_clk_producer>;
+                    };
+                    
+                    dailink0_slave: codec {
+                        sound-dai = <&es8390>;
+                    };
+                };
+            };
+
+            // sound {
+            //     compatible = "simple-audio-card";
+            //     simple-audio-card,name = "ES8388-Audio";
+            //     status = "okay";
+
+            //     /* 耳机插孔 widget */
+            //     simple-audio-card,widgets =
+            //         "Headphone", "Headphone Jack",
+            //         "Microphone", "Mic Jack";
+
+            //     /* DAPM 路由：
+            //     *   ES8389.HPOL/HPOR  →  TPA6130A2.LEFTIN/RIGHTIN
+            //     *   TPA6130A2.HPLEFT/HPRIGHT → 耳机插孔
+            //     *   MIC Jack → ES8389.INPUT1/INPUT2
+            //     */
+            //     simple-audio-card,routing =
+            //         "LEFTIN",         "HPOL",
+            //         "RIGHTIN",        "HPOR",
+            //         "Headphone Jack", "HPLEFT",
+            //         "Headphone Jack", "HPRIGHT",
+            //         "INPUT1",         "Mic Jack",
+            //         "INPUT2",         "Mic Jack";
+
+            //     /* 把功放作为 aux-dev 挂入声卡，由 DAPM 自动使能 */
+            //     simple-audio-card,aux-devs = <&hpamp>;
+
+            //     simple-audio-card,dai-link {
+            //         format = "i2s";
+            //         bitclock-master = <&dailink0_master>;
+            //         frame-master = <&dailink0_master>;
+
+            //         dailink0_master: cpu {
+            //             sound-dai = <&i2s_clk_producer>;
+            //         };
+
+            //         dailink0_slave: codec {
+            //             sound-dai = <&es8390>;
+            //         };
+            //     };
+            // };
+
+        };
+        
+    };
+
+    fragment@4 {
+        target = <&spi0>;
+        __overlay__ {
+            status = "okay";
+
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            num-cs = <3>;
+            cs-gpios = <&gpio 8 1>,
+                        <&gpio 7 1>,
+                        <&gpio 22 1>;
+
+            st7789v@0 {
+                compatible = "sitronix,st7789v_m5stack";
+                reg = <0>;
+                pinctrl-names = "default";
+                pinctrl-0 = <&st7789v_pins>;
+                backlight = <&backlight_pwm>;
+
+
+                spi-max-frequency = <50000000>;
+                txbuflen = <32768>;
+                
+                dc-gpios = <&gpio 25 0>;
+                // reset-gpios = <&py32io16 4 1>;
+
+                ram-x-offset = <0>;
+                ram-y-offset = <35>;
+
+                buswidth = <8>;
+                width = <170>;
+                height = <320>;
+                rotate = <90>;
+                fps = <60>;
+                // bgr;
+                
+                debug = <0>;
+            };
+
+            // spidev@2 {
+            //     compatible = "spidev";
+            //     reg = <2>;
+            //     spi-max-frequency = <20000000>;
+            //     status = "disabled";
+            // };
+        };
+    };
+
+    fragment@5 {
+        target = <&spidev0>;
+        __overlay__ {
+            status = "disabled";
+        };
+    };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+};
+
+
+
+
+
+
+
+
+
+
+
+

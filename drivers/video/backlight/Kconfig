@@ -527,6 +527,14 @@ config BACKLIGHT_OCP8178
 	help
 	  If you have an OCP8178, say Y to enable the backlight driver.
  
+config BACKLIGHT_PWM_M5STACK
+	tristate "M5Stack PWM Backlight Driver"
+	depends on PWM
+	help
+	  M5Stack "m5stack,pwm-backlight" compatible backlight driver,
+	  drives the CardputerZero panel backlight via the py32ioexp
+	  PWM channel.
+
 endif # BACKLIGHT_CLASS_DEVICE
 
 endmenu

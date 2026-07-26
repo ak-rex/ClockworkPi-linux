@@ -262,6 +262,15 @@ config KEYBOARD_GPIO_POLLED
 	  To compile this driver as a module, choose M here: the
 	  module will be called gpio_keys_polled.
 
+config KEYBOARD_TCA8418_M5STACK
+	tristate "CardputerZero TCA8418 keypad (dual keymap + capslock)"
+	depends on I2C
+	select INPUT_MATRIXKMAP
+	help
+	  M5Stack CardputerZero variant of the TCA8418 keypad driver -
+	  adds the second linux,keymap1 table, sym/fn/asmux button
+	  codes, and py32ioexp-driven table-select/capslock GPIOs.
+
 config KEYBOARD_TCA8418
 	tristate "TCA8418 Keypad Support"
 	depends on I2C

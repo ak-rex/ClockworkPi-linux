@@ -1,0 +1,19 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "brcm,bcm2835";
+
+    fragment@0 {
+        target = <&gpio>;
+        __overlay__ {
+
+            always_high_pin: always-high {
+                gpio-hog;
+                gpios = <24 0>;
+                output-high;
+                line-name = "always-high-pin";
+            };
+        };
+    };
+};

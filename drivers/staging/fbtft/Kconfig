@@ -143,6 +143,13 @@ config FB_TFT_ST7735R
 	help
 	  Generic Framebuffer support for ST7735R
 
+config FB_TFT_ST7789V_M5STACK
+	tristate "FB driver for the ST7789V LCD Controller (CardputerZero)"
+	depends on FB_TFT
+	help
+	  M5Stack CardputerZero variant of the ST7789V fbtft driver -
+	  170x320 panel, 35px RAM y-offset, SPI0 CS0.
+
 config FB_TFT_ST7789V
 	tristate "FB driver for the ST7789V LCD Controller"
 	help

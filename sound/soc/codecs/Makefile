@@ -892,3 +892,4 @@ obj-$(CONFIG_SND_SOC_I_SABRE_CODEC)    += snd-soc-i-sabre-codec.o
 obj-$(CONFIG_SND_SOC_MA120X0P)   += snd-soc-ma120x0p.o
 obj-$(CONFIG_SND_SOC_PCM1794A) += snd-soc-pcm1794a.o
 obj-$(CONFIG_SND_SOC_TAS5713)  += snd-soc-tas5713.o
+obj-$(CONFIG_SND_SOC_ES8389_M5STACK)	+= es8389_m5stack.o
