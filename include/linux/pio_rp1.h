@@ -46,6 +46,7 @@
 #define GPIOS_MASK			((1 << RP1_PIO_GPIO_COUNT) - 1)
 
 #define PICO_NO_HARDWARE		0
+#define PICO_PIO_VERSION		0
 
 #define pio0				pio_open_helper(0)
 
@@ -101,6 +102,18 @@
 #define PROC_PIO_SM0_EXECCTRL_STATUS_SEL_LSB	5
 #define PROC_PIO_SM0_EXECCTRL_STATUS_N_BITS	0x0000001f
 #define PROC_PIO_SM0_EXECCTRL_STATUS_N_LSB	0
+
+#define irq_add_shared_handler(num, handler, ...) \
+	irq_add_handler(pio, num, handler, NULL)
+
+#define irq_has_shared_handler(num, handler, ...) \
+	(irq_get_handler(pio, num, handler, NULL) != NULL)
+
+#define irq_set_exclusive_handler(num, handler) \
+	irq_add_handler(pio, num, handler, NULL)
+
+#define irq_get_exclusive_handler(num) \
+	((void *)irq_get_handler(pio, num))
 
 enum pio_fifo_join {
 	PIO_FIFO_JOIN_NONE = 0,
@@ -172,13 +185,42 @@ enum gpio_drive_strength {
 	GPIO_DRIVE_STRENGTH_12MA = 3
 };
 
+enum pio_sm_flags {
+	PIO_SM_FLAG_TXSTALL = 0x0001,
+	PIO_SM_FLAG_RXSTALL = 0x0002,
+	PIO_SM_FLAG_TXOVER  = 0x0004,
+	PIO_SM_FLAG_RXUNDER = 0x0008,
+};
+
+
+enum pio_interrupt_source {
+	PIS_SM0_RX_FIFO_NOT_EMPTY,
+	PIS_SM1_RX_FIFO_NOT_EMPTY,
+	PIS_SM2_RX_FIFO_NOT_EMPTY,
+	PIS_SM3_RX_FIFO_NOT_EMPTY,
+	PIS_SM0_TX_FIFO_NOT_FULL,
+	PIS_SM1_TX_FIFO_NOT_FULL,
+	PIS_SM2_TX_FIFO_NOT_FULL,
+	PIS_SM3_TX_FIFO_NOT_FULL,
+	PIS_INTERRUPT0,
+	PIS_INTERRUPT1,
+	PIS_INTERRUPT2,
+	PIS_INTERRUPT3,
+
+	PIS_MAX
+};
+
 struct fp24_8 {
 	uint32_t val;
 };
 
 typedef rp1_pio_sm_config pio_sm_config;
 
+typedef void (*pio_irq_handler_t)(void *context);
+
 typedef struct rp1_pio_client *PIO;
+
+static struct rp1_pio_client *g_client;
 
 int rp1_pio_init(void);
 PIO rp1_pio_open(void);
@@ -213,8 +255,10 @@ int rp1_pio_sm_enable_sync(struct rp1_pio_client *client, void *param);
 int rp1_pio_sm_put(struct rp1_pio_client *client, void *param);
 int rp1_pio_sm_get(struct rp1_pio_client *client, void *param);
 int rp1_pio_sm_set_dmactrl(struct rp1_pio_client *client, void *param);
+int rp1_pio_sm_get_dmactrl(struct rp1_pio_client *client, void *param);
 int rp1_pio_sm_fifo_state(struct rp1_pio_client *client, void *param);
 int rp1_pio_sm_drain_tx(struct rp1_pio_client *client, void *param);
+int rp1_pio_sm_get_flags(struct rp1_pio_client *client, void *param);
 int rp1_pio_gpio_init(struct rp1_pio_client *client, void *param);
 int rp1_pio_gpio_set_function(struct rp1_pio_client *client, void *param);
 int rp1_pio_gpio_set_pulls(struct rp1_pio_client *client, void *param);
@@ -224,6 +268,22 @@ int rp1_pio_gpio_set_oeover(struct rp1_pio_client *client, void *param);
 int rp1_pio_gpio_set_input_enabled(struct rp1_pio_client *client, void *param);
 int rp1_pio_gpio_set_drive_strength(struct rp1_pio_client *client, void *param);
 
+int rp1_pio_irq_claim(struct rp1_pio_client *client, void *param);
+int rp1_pio_irq_wait(struct rp1_pio_client *client, void *param);
+int rp1_pio_set_irqn_source_mask_enabled(struct rp1_pio_client *client, void *param);
+int rp1_pio_interrupt_get(struct rp1_pio_client *client, void *param);
+int rp1_pio_interrupt_clear(struct rp1_pio_client *client, void *param);
+int rp1_pio_irq_set_enabled(struct rp1_pio_client *client, void *param);
+int rp1_pio_irq_is_enabled(struct rp1_pio_client *client, void *param);
+
+void rp1_pio_irq_add_handler(struct rp1_pio_client *client, uint num,
+			     pio_irq_handler_t handler, void *context);
+void rp1_pio_irq_remove_handler(struct rp1_pio_client *client,
+			     uint num, pio_irq_handler_t handler);
+pio_irq_handler_t rp1_pio_irq_get_handler(struct rp1_pio_client *client, uint num);
+uint rp1_pio_irq_map(struct rp1_pio_client *client, uint irqn);
+
+
 static inline int pio_init(void)
 {
 	return rp1_pio_init();
@@ -231,11 +291,14 @@ static inline int pio_init(void)
 
 static inline struct rp1_pio_client *pio_open(void)
 {
-	return rp1_pio_open();
+	g_client = rp1_pio_open();
+	return g_client;
 }
 
 static inline void pio_close(struct rp1_pio_client *client)
 {
+	if (g_client == client)
+		g_client = NULL;
 	rp1_pio_close(client);
 }
 
@@ -300,7 +363,7 @@ static inline bool pio_can_add_program_at_offset(struct rp1_pio_client *client,
 	args.num_instrs = program->length;
 
 	memcpy(args.instrs, program->instructions, args.num_instrs * sizeof(args.instrs[0]));
-	return !rp1_pio_can_add_program(client, &args);
+	return rp1_pio_can_add_program(client, &args);
 }
 
 static inline uint pio_add_program(struct rp1_pio_client *client, const pio_program_t *program)
@@ -517,7 +580,7 @@ static inline int pio_sm_set_pindirs_with_mask(struct rp1_pio_client *client, ui
 
 	if (bad_params_if(client, sm >= NUM_PIO_STATE_MACHINES ||
 			      (pin_dirs & GPIOS_MASK) != pin_dirs ||
-			      (pin_mask & pin_mask) != pin_mask))
+			      (pin_mask & GPIOS_MASK) != pin_mask))
 		return -EINVAL;
 	return rp1_pio_sm_set_pindirs(client, &args);
 }
@@ -611,6 +674,15 @@ static inline int pio_sm_set_dmactrl(struct rp1_pio_client *client, uint sm, boo
 	return rp1_pio_sm_set_dmactrl(client, &args);
 };
 
+static inline uint32_t pio_sm_get_dmactrl(struct rp1_pio_client *client, uint sm, bool is_tx)
+{
+	struct rp1_pio_sm_get_dmactrl_args args = { .sm = sm, .is_tx = is_tx };
+
+	if (!bad_params_if(client, sm >= NUM_PIO_STATE_MACHINES))
+		rp1_pio_sm_get_dmactrl(client, &args);
+	return args.ctrl;
+};
+
 static inline int pio_sm_drain_tx_fifo(struct rp1_pio_client *client, uint sm)
 {
 	struct rp1_pio_sm_clear_fifos_args args = { .sm = sm };
@@ -619,6 +691,37 @@ static inline int pio_sm_drain_tx_fifo(struct rp1_pio_client *client, uint sm)
 		return -EINVAL;
 	return rp1_pio_sm_drain_tx(client, &args);
 };
+
+static inline uint32_t pio_sm_wait_flags(struct rp1_pio_client *client, uint sm, uint32_t flags,
+					bool clear, uint32_t timeout)
+{
+	struct rp1_pio_sm_get_flags_args args = { .sm = sm, .flags = flags, .clear = clear,
+						  .timeout = timeout };
+
+	if (!bad_params_if(client, sm >= NUM_PIO_STATE_MACHINES))
+		rp1_pio_sm_get_flags(client, &args);
+	return args.flags;
+};
+
+static inline uint32_t pio_sm_get_flags(struct rp1_pio_client *client, uint sm, uint32_t flags,
+					bool clear)
+{
+	struct rp1_pio_sm_get_flags_args args = { .sm = sm, .flags = flags, .clear = clear,
+						  .timeout = 0 };
+
+	if (!bad_params_if(client, sm >= NUM_PIO_STATE_MACHINES))
+		rp1_pio_sm_get_flags(client, &args);
+	return args.flags;
+}
+
+static inline void pio_sm_clear_flags(struct rp1_pio_client *client, uint sm, uint32_t flags)
+{
+	struct rp1_pio_sm_get_flags_args args = { .sm = sm, .flags = flags, .clear = true,
+						  .timeout = 0 };
+
+	if (!bad_params_if(client, sm >= NUM_PIO_STATE_MACHINES))
+		rp1_pio_sm_get_flags(client, &args);
+}
 
 static inline int pio_sm_put(struct rp1_pio_client *client, uint sm, uint32_t data)
 {
@@ -1015,6 +1118,121 @@ static inline int pio_gpio_pull_down(struct rp1_pio_client *client, uint gpio)
 static inline int pio_gpio_disable_pulls(struct rp1_pio_client *client, uint gpio)
 {
 	return pio_gpio_set_pulls(client, gpio, false, false);
+}
+
+static inline int pio_get_irq_num(struct rp1_pio_client *client, uint irqn)
+{
+	return rp1_pio_irq_map(client, irqn);
+}
+
+static inline void pio_set_irqn_source_mask_enabled(struct rp1_pio_client *client, uint irq_index,
+						    uint32_t source_mask, bool enabled)
+{
+	struct rp1_pio_set_irqn_source_mask_enabled_args args = {
+		.irq_index = rp1_pio_irq_map(client, irq_index),
+		.source_mask = source_mask, .enabled = enabled,
+	};
+
+	rp1_pio_set_irqn_source_mask_enabled(client, &args);
+}
+
+static inline void pio_set_irq0_source_enabled(struct rp1_pio_client *client,
+					       enum pio_interrupt_source source,
+					       bool enabled)
+{
+	pio_set_irqn_source_mask_enabled(client, 0, 1 << source, enabled);
+}
+
+static inline void pio_set_irq1_source_enabled(struct rp1_pio_client *client,
+					       enum pio_interrupt_source source,
+					       bool enabled)
+{
+	pio_set_irqn_source_mask_enabled(client, 1, 1 << source, enabled);
+}
+
+static inline void pio_set_irq0_source_mask_enabled(struct rp1_pio_client *client,
+						    uint32_t source_mask,
+						    bool enabled)
+{
+	pio_set_irqn_source_mask_enabled(client, 0, source_mask, enabled);
+}
+
+static inline void pio_set_irq1_source_mask_enabled(struct rp1_pio_client *client,
+						    uint32_t source_mask,
+						    bool enabled)
+{
+	pio_set_irqn_source_mask_enabled(client, 1, source_mask, enabled);
+}
+
+static inline void pio_set_irqn_source_enabled(struct rp1_pio_client *client, uint irq_index,
+					       enum pio_interrupt_source source, bool enabled)
+{
+	pio_set_irqn_source_mask_enabled(client, irq_index, 1 << source, enabled);
+}
+
+static inline uint pio_interrupt_rel(uint sm, uint pio_interrupt_num)
+{
+	return (pio_interrupt_num & 0x1c) | ((pio_interrupt_num + sm) & 0x3);
+}
+
+static inline void irq_add_handler(struct rp1_pio_client *client, uint num,
+				   pio_irq_handler_t handler,
+				   void *context)
+{
+	return rp1_pio_irq_add_handler(client, num, handler, context);
+}
+
+static inline pio_irq_handler_t irq_get_handler(struct rp1_pio_client *client, uint num)
+{
+	return rp1_pio_irq_get_handler(client, num);
+}
+
+static inline bool irq_has_handler(struct rp1_pio_client *client, uint num)
+{
+	return rp1_pio_irq_get_handler(client, num) != NULL;
+}
+
+static inline void irq_set_enabled(struct rp1_pio_client *client, uint num, bool enabled)
+{
+	struct rp1_pio_irq_set_enabled_args args = { .irq_index = num, .enabled = enabled };
+
+	if (bad_params_if(client, num >= RP1_PIO_IRQ_COUNT))
+		return;
+
+	rp1_pio_irq_set_enabled(client, &args);
+};
+
+static inline bool irq_is_enabled(struct rp1_pio_client *client, uint num)
+{
+	struct rp1_pio_irq_set_enabled_args args = { .irq_index = num };
+
+	if (bad_params_if(client, num >= RP1_PIO_IRQ_COUNT))
+		return false;
+
+	(void)rp1_pio_irq_is_enabled(client, &args);
+
+	return !!args.enabled;
+}
+
+static inline bool pio_interrupt_get(struct rp1_pio_client *client, uint pio_interrupt_num)
+{
+	struct rp1_pio_interrupt_get_args args = { .pio_interrupt_num = pio_interrupt_num };
+
+	if (bad_params_if(client, pio_interrupt_num >= PIS_MAX))
+		return false;
+
+	(void)rp1_pio_interrupt_get(client, &args);
+
+	return !!args.active;
+}
+
+static inline void pio_interrupt_clear(struct rp1_pio_client *client, uint pio_interrupt_num)
+{
+	struct rp1_pio_interrupt_get_args args = { .pio_interrupt_num = pio_interrupt_num };
+
+	if (bad_params_if(client, pio_interrupt_num >= PIS_MAX))
+		return;
+	(void)rp1_pio_interrupt_clear(client, &args);
 }
 
 #endif

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 + WITH Linux-syscall-note */
 /*
- * Copyright (c) 2023-24 Raspberry Pi Ltd.
+ * Copyright (c) 2023-26 Raspberry Pi Ltd.
  * All rights reserved.
  */
 #ifndef _PIO_RP1_IF_H
@@ -8,16 +8,17 @@
 
 #include <linux/ioctl.h>
 
-#define RP1_PIO_INSTRUCTION_COUNT   32
-#define RP1_PIO_SM_COUNT            4
-#define RP1_PIO_GPIO_COUNT          28
-#define RP1_GPIO_FUNC_PIO           7
+#define RP1_PIO_INSTRUCTION_COUNT	32
+#define RP1_PIO_SM_COUNT		4
+#define RP1_PIO_GPIO_COUNT		28
+#define RP1_GPIO_FUNC_PIO		7
+#define RP1_PIO_IRQ_COUNT		2
 
-#define RP1_PIO_ORIGIN_ANY          ((uint16_t)(~0))
+#define RP1_PIO_ORIGIN_ANY		((uint16_t)(~0))
 
-#define RP1_PIO_DIR_TO_SM           0
-#define RP1_PIO_DIR_FROM_SM         1
-#define RP1_PIO_DIR_COUNT           2
+#define RP1_PIO_DIR_TO_SM		0
+#define RP1_PIO_DIR_FROM_SM		1
+#define RP1_PIO_DIR_COUNT		2
 
 typedef struct {
 	uint32_t clkdiv;
@@ -124,6 +125,13 @@ struct rp1_pio_sm_set_dmactrl_args {
 	uint32_t ctrl;
 };
 
+struct rp1_pio_sm_get_dmactrl_args {
+	uint16_t sm;
+	uint8_t is_tx;
+	uint8_t rsvd;
+	uint32_t ctrl; /* OUT */
+};
+
 struct rp1_pio_sm_fifo_state_args {
 	uint16_t sm;
 	uint8_t tx;
@@ -131,6 +139,14 @@ struct rp1_pio_sm_fifo_state_args {
 	uint16_t level; /* OUT */
 	uint8_t empty; /* OUT */
 	uint8_t full; /* OUT */
+};
+
+struct rp1_pio_sm_get_flags_args {
+	uint16_t sm;
+	uint8_t clear;
+	uint8_t rsvd;
+	uint32_t flags; /* IN/OUT */
+	uint32_t timeout;
 };
 
 struct rp1_gpio_init_args {
@@ -171,6 +187,7 @@ struct rp1_pio_sm_xfer_data_args {
 	uint16_t sm;
 	uint16_t dir;
 	uint16_t data_bytes;
+	uint16_t rsvd;
 	void *data;
 };
 
@@ -185,6 +202,38 @@ struct rp1_access_hw_args {
 	uint32_t addr;
 	uint32_t len;
 	void *data;
+};
+
+struct rp1_pio_irq_claim_args {
+	int irq_index; /* OUT */
+};
+
+struct rp1_pio_irq_wait_args {
+	uint32_t timeout_ms;
+	uint32_t active_mask; /* OUT */
+};
+
+struct rp1_pio_irq_set_enabled_args {
+	uint16_t irq_index;
+	uint8_t enabled;
+	uint8_t rsvd;
+};
+
+struct rp1_pio_set_irqn_source_mask_enabled_args {
+	uint16_t irq_index;
+	uint8_t enabled;
+	uint8_t rsvd;
+	uint32_t source_mask;
+};
+
+struct rp1_pio_interrupt_get_args {
+	uint16_t pio_interrupt_num;
+	uint16_t rsvd;
+	uint8_t active; /* OUT */
+};
+
+struct rp1_pio_interrupt_clear_args {
+	uint16_t pio_interrupt_num;
 };
 
 #define PIO_IOC_MAGIC 102
@@ -220,8 +269,10 @@ struct rp1_access_hw_args {
 #define PIO_IOC_SM_PUT _IOW(PIO_IOC_MAGIC, 41, struct rp1_pio_sm_put_args)
 #define PIO_IOC_SM_GET _IOWR(PIO_IOC_MAGIC, 42, struct rp1_pio_sm_get_args)
 #define PIO_IOC_SM_SET_DMACTRL _IOW(PIO_IOC_MAGIC, 43, struct rp1_pio_sm_set_dmactrl_args)
-#define PIO_IOC_SM_FIFO_STATE _IOW(PIO_IOC_MAGIC, 44, struct rp1_pio_sm_fifo_state_args)
+#define PIO_IOC_SM_FIFO_STATE _IOWR(PIO_IOC_MAGIC, 44, struct rp1_pio_sm_fifo_state_args)
 #define PIO_IOC_SM_DRAIN_TX _IOW(PIO_IOC_MAGIC, 45, struct rp1_pio_sm_clear_fifos_args)
+#define PIO_IOC_SM_GET_FLAGS _IOWR(PIO_IOC_MAGIC, 46, struct rp1_pio_sm_get_flags_args)
+#define PIO_IOC_SM_GET_DMACTRL _IOWR(PIO_IOC_MAGIC, 47, struct rp1_pio_sm_get_dmactrl_args)
 
 #define PIO_IOC_GPIO_INIT _IOW(PIO_IOC_MAGIC, 50, struct rp1_gpio_init_args)
 #define PIO_IOC_GPIO_SET_FUNCTION _IOW(PIO_IOC_MAGIC, 51, struct rp1_gpio_set_function_args)
@@ -231,5 +282,14 @@ struct rp1_access_hw_args {
 #define PIO_IOC_GPIO_SET_OEOVER _IOW(PIO_IOC_MAGIC, 55, struct rp1_gpio_set_args)
 #define PIO_IOC_GPIO_SET_INPUT_ENABLED _IOW(PIO_IOC_MAGIC, 56, struct rp1_gpio_set_args)
 #define PIO_IOC_GPIO_SET_DRIVE_STRENGTH _IOW(PIO_IOC_MAGIC, 57, struct rp1_gpio_set_args)
+
+#define PIO_IOC_IRQ_CLAIM _IOWR(PIO_IOC_MAGIC, 60, struct rp1_pio_irq_claim_args)
+#define PIO_IOC_IRQ_WAIT _IOWR(PIO_IOC_MAGIC, 61, struct rp1_pio_irq_wait_args)
+#define PIO_IOC_IRQ_SET_ENABLED _IOW(PIO_IOC_MAGIC, 62, struct rp1_pio_irq_set_enabled_args)
+#define PIO_IOC_IRQ_IS_ENABLED _IOWR(PIO_IOC_MAGIC, 63, struct rp1_pio_irq_set_enabled_args)
+#define PIO_IOC_SET_IRQN_SOURCE_MASK_ENABLED \
+	_IOW(PIO_IOC_MAGIC, 64, struct rp1_pio_set_irqn_source_mask_enabled_args)
+#define PIO_IOC_INTERRUPT_GET _IOWR(PIO_IOC_MAGIC, 65, struct rp1_pio_interrupt_get_args)
+#define PIO_IOC_INTERRUPT_CLEAR _IOW(PIO_IOC_MAGIC, 66, struct rp1_pio_interrupt_clear_args)
 
 #endif
